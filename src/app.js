@@ -33,6 +33,8 @@ try {
 
 // Import enhanced routes (v1.3.0)
 const apiRoutes = require('./routes/api');
+const ecommerceRoutes = require('./routes/ecommerce');
+const amazonRoutes = require('./routes/stores/amazon');
 const staticRoutes = require('./routes/static');
 let adminRoutes = null;
 if (config.features?.adminRoutes) {
@@ -89,6 +91,12 @@ app.use((req, res, next) => {
 
 // Mount API routes
 app.use('/api', apiRoutes);
+
+// Mount E-commerce routes
+app.use('/api/ecommerce', ecommerceRoutes);
+
+// Mount store-specific routes
+app.use('/api/amazon', amazonRoutes);
 
 // Mount admin routes (v1.3.0)
 if (adminRoutes) {

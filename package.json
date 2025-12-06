@@ -67,6 +67,7 @@
   "author": "SaifyXPRO",
   "license": "MIT",
   "dependencies": {
+    "@google/genai": "^1.0.0",
     "body-parser": "^1.20.2",
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.3",

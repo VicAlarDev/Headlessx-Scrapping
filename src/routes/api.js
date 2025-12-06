@@ -69,10 +69,12 @@ if (config.features?.detectionSuite !== false) {
 router.post('/render', authenticate, asyncHandler(RenderingController.renderPage));
 router.post('/render/stealth', authenticate, asyncHandler(RenderingController.renderPage)); // Alias for maximum stealth
 router.post('/html', authenticateText, asyncHandler(RenderingController.renderHtml));
+router.post('/html/clean', authenticateText, asyncHandler(RenderingController.renderCleanHtml)); // HTML without CSS
 router.post('/content', authenticateText, asyncHandler(RenderingController.renderContent));
 
 // GET endpoints for convenience
 router.get('/html', authenticateText, asyncHandler(GetController.getHtml));
+router.get('/html/clean', authenticateText, asyncHandler(GetController.getCleanHtml)); // HTML without CSS (GET)
 router.get('/content', authenticateText, asyncHandler(GetController.getContent));
 
 // Screenshot and PDF endpoints

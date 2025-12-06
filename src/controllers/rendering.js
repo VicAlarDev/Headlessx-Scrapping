@@ -5,8 +5,7 @@
  */
 
 const RenderingService = require('../services/rendering');
-const { validateUrl } = require('../utils/helpers');
-const { extractCleanText } = require('../utils/helpers');
+const { validateUrl, extractCleanText, extractCleanHtml } = require('../utils/helpers');
 const { logger } = require('../utils/logger');
 const { sendSecureResponse } = require('../utils/security');
 const { createErrorResponse } = require('../utils/errors');
@@ -229,6 +228,74 @@ class RenderingController {
             logger.error(requestId, 'Screenshot generation error', error);
             const { statusCode, errorResponse } = createErrorResponse(error, req.query?.url);
             res.status(statusCode).json(errorResponse);
+        }
+    }
+
+    // Clean HTML endpoint (returns HTML without CSS but preserving links and structure)
+    static async renderCleanHtml(req, res) {
+        const requestId = req.requestId;
+
+        try {
+            // Validate URL
+            const { url } = req.body;
+            const validation = validateUrl(url);
+            if (!validation.valid) {
+                return res.status(400).send(validation.error);
+            }
+
+            logger.info(requestId, `Clean HTML rendering (no CSS) for: ${url}`);
+
+            // Options for clean HTML extraction
+            const cleanHtmlOptions = {
+                removeClasses: req.body.removeClasses === true,
+                removeIds: req.body.removeIds === true,
+                removeDataAttrs: req.body.removeDataAttrs !== false,
+                preserveLinks: req.body.preserveLinks !== false,
+                preserveImages: req.body.preserveImages !== false,
+                preserveForms: req.body.preserveForms === true,
+                removeScripts: req.body.removeScripts !== false,
+                removeComments: req.body.removeComments !== false
+            };
+
+            // Rendering options
+            const options = {
+                ...req.body,
+                returnPartialOnTimeout: req.body.returnPartialOnTimeout === true
+            };
+
+            const result = await RenderingService.renderPageAdvanced(options);
+
+            // Extract clean HTML without CSS
+            const cleanHtml = await extractCleanHtml(result.html, browserService, cleanHtmlOptions);
+
+            logger.info(requestId, `Successfully extracted clean HTML: ${url} (${result.wasTimeout ? 'with timeouts' : 'complete'})`);
+            logger.info(requestId, `Clean HTML length: ${cleanHtml.length} characters (original: ${result.html.length})`);
+
+            // Set informational headers
+            const infoHeaders = {
+                'X-Rendered-URL': result.url,
+                'X-Page-Title': result.title,
+                'X-Timestamp': result.timestamp,
+                'X-Was-Timeout': result.wasTimeout.toString(),
+                'X-Original-Length': result.html.length.toString(),
+                'X-Clean-Length': cleanHtml.length.toString(),
+                'X-Is-Emergency': (result.isEmergencyContent || false).toString()
+            };
+
+            sendSecureResponse(res, cleanHtml, 'text/html; charset=utf-8', infoHeaders);
+        } catch (error) {
+            logger.error(requestId, 'Clean HTML rendering error', error);
+
+            let statusCode = 500;
+            let errorMessage = `Error: ${error.message}`;
+
+            if (error.category) {
+                const { statusCode: code, errorResponse } = createErrorResponse(error, req.body?.url);
+                statusCode = code;
+                errorMessage = `${errorResponse.errorType}: ${error.message}\nSuggestion: ${errorResponse.suggestion || 'Please try again.'}`;
+            }
+
+            res.status(statusCode).send(errorMessage);
         }
     }
 

@@ -345,10 +345,230 @@ async function extractCleanText(htmlContent, browserService) {
     }
 }
 
+/**
+ * Extract clean HTML without CSS styles but preserving structural elements like links
+ * Removes: <style>, inline styles, CSS classes (optionally)
+ * Preserves: <a> with href, <img> with src, semantic structure
+ */
+async function extractCleanHtml(htmlContent, browserService, options = {}) {
+    const {
+        removeClasses = false,
+        removeIds = false,
+        removeDataAttrs = true,
+        preserveLinks = true,
+        preserveImages = true,
+        preserveForms = false,
+        removeScripts = true,
+        removeComments = true
+    } = options;
+
+    try {
+        if (!htmlContent || htmlContent.trim().length === 0) {
+            return '<html><body><p>No content available</p></body></html>';
+        }
+
+        // For smaller content, use regex-based cleaning
+        if (htmlContent.length < 100000) {
+            let cleanHtml = htmlContent;
+
+            // Remove <style> tags and their content
+            cleanHtml = cleanHtml.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+
+            // Remove <script> tags if requested
+            if (removeScripts) {
+                cleanHtml = cleanHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+            }
+
+            // Remove HTML comments if requested
+            if (removeComments) {
+                cleanHtml = cleanHtml.replace(/<!--[\s\S]*?-->/g, '');
+            }
+
+            // Remove inline style attributes
+            cleanHtml = cleanHtml.replace(/\s*style\s*=\s*["'][^"']*["']/gi, '');
+
+            // Remove class attributes if requested
+            if (removeClasses) {
+                cleanHtml = cleanHtml.replace(/\s*class\s*=\s*["'][^"']*["']/gi, '');
+            }
+
+            // Remove id attributes if requested
+            if (removeIds) {
+                cleanHtml = cleanHtml.replace(/\s*id\s*=\s*["'][^"']*["']/gi, '');
+            }
+
+            // Remove data-* attributes if requested
+            if (removeDataAttrs) {
+                cleanHtml = cleanHtml.replace(/\s*data-[a-z0-9-]+\s*=\s*["'][^"']*["']/gi, '');
+            }
+
+            // Remove <link rel="stylesheet"> tags
+            cleanHtml = cleanHtml.replace(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi, '');
+
+            // Remove other <link> tags that reference CSS
+            cleanHtml = cleanHtml.replace(/<link[^>]*\.css[^>]*>/gi, '');
+
+            // Remove noscript, iframe, object, embed tags
+            cleanHtml = cleanHtml.replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '');
+            cleanHtml = cleanHtml.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+            cleanHtml = cleanHtml.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
+            cleanHtml = cleanHtml.replace(/<embed[^>]*>/gi, '');
+
+            // Remove form elements if not preserving
+            if (!preserveForms) {
+                cleanHtml = cleanHtml.replace(/<input[^>]*>/gi, '');
+                cleanHtml = cleanHtml.replace(/<button\b[^<]*(?:(?!<\/button>)<[^<]*)*<\/button>/gi, '');
+                cleanHtml = cleanHtml.replace(/<select\b[^<]*(?:(?!<\/select>)<[^<]*)*<\/select>/gi, '');
+                cleanHtml = cleanHtml.replace(/<textarea\b[^<]*(?:(?!<\/textarea>)<[^<]*)*<\/textarea>/gi, '');
+            }
+
+            // Remove images if not preserving
+            if (!preserveImages) {
+                cleanHtml = cleanHtml.replace(/<img[^>]*>/gi, '');
+                cleanHtml = cleanHtml.replace(/<picture\b[^<]*(?:(?!<\/picture>)<[^<]*)*<\/picture>/gi, '');
+                cleanHtml = cleanHtml.replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '');
+            }
+
+            // Remove links if not preserving
+            if (!preserveLinks) {
+                cleanHtml = cleanHtml.replace(/<a\b[^>]*>(.*?)<\/a>/gi, '$1');
+            }
+
+            // Clean up excessive whitespace while preserving structure
+            cleanHtml = cleanHtml
+                .replace(/>\s+</g, '>\n<')
+                .replace(/\n\s*\n\s*\n/g, '\n\n')
+                .trim();
+
+            return cleanHtml;
+        }
+
+        // For larger/complex content, use browser-based cleaning
+        const browser = await browserService.getBrowser();
+        const context = await browserService.createIsolatedContext(browser, {});
+        const page = await context.newPage();
+
+        try {
+            await page.setContent(htmlContent, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+            const cleanedHtml = await page.evaluate((opts) => {
+                // Remove all <style> elements
+                document.querySelectorAll('style').forEach(el => el.remove());
+
+                // Remove all <link rel="stylesheet"> elements
+                document.querySelectorAll('link[rel="stylesheet"]').forEach(el => el.remove());
+                document.querySelectorAll('link[href*=".css"]').forEach(el => el.remove());
+
+                // Remove <script> elements if requested
+                if (opts.removeScripts) {
+                    document.querySelectorAll('script').forEach(el => el.remove());
+                }
+
+                // Remove noscript, iframe, object, embed
+                document.querySelectorAll('noscript, iframe, object, embed').forEach(el => el.remove());
+
+                // Remove inline styles from all elements
+                document.querySelectorAll('[style]').forEach(el => {
+                    el.removeAttribute('style');
+                });
+
+                // Remove class attributes if requested
+                if (opts.removeClasses) {
+                    document.querySelectorAll('[class]').forEach(el => {
+                        el.removeAttribute('class');
+                    });
+                }
+
+                // Remove id attributes if requested
+                if (opts.removeIds) {
+                    document.querySelectorAll('[id]').forEach(el => {
+                        el.removeAttribute('id');
+                    });
+                }
+
+                // Remove data-* attributes if requested
+                if (opts.removeDataAttrs) {
+                    document.querySelectorAll('*').forEach(el => {
+                        Array.from(el.attributes).forEach(attr => {
+                            if (attr.name.startsWith('data-')) {
+                                el.removeAttribute(attr.name);
+                            }
+                        });
+                    });
+                }
+
+                // Remove form elements if not preserving
+                if (!opts.preserveForms) {
+                    document.querySelectorAll('input, button, select, textarea').forEach(el => el.remove());
+                }
+
+                // Remove images if not preserving
+                if (!opts.preserveImages) {
+                    document.querySelectorAll('img, picture, svg').forEach(el => el.remove());
+                }
+
+                // Remove links content but keep text if not preserving
+                if (!opts.preserveLinks) {
+                    document.querySelectorAll('a').forEach(el => {
+                        const text = document.createTextNode(el.textContent);
+                        el.parentNode.replaceChild(text, el);
+                    });
+                }
+
+                // Remove HTML comments
+                const removeComments = (node) => {
+                    const iterator = document.createNodeIterator(
+                        node,
+                        NodeFilter.SHOW_COMMENT,
+                        null,
+                        false
+                    );
+                    let comment;
+                    const comments = [];
+                    while (comment = iterator.nextNode()) {
+                        comments.push(comment);
+                    }
+                    comments.forEach(c => c.remove());
+                };
+
+                if (opts.removeComments) {
+                    removeComments(document);
+                }
+
+                return document.documentElement.outerHTML;
+            }, {
+                removeClasses,
+                removeIds,
+                removeDataAttrs,
+                preserveLinks,
+                preserveImages,
+                preserveForms,
+                removeScripts,
+                removeComments
+            });
+
+            await context.close();
+            return cleanedHtml;
+        } catch (error) {
+            await context.close();
+            throw error;
+        }
+    } catch (error) {
+        console.error('Error extracting clean HTML:', error);
+        // Fallback to basic regex cleaning
+        return htmlContent
+            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+            .replace(/\s*style\s*=\s*["'][^"']*["']/gi, '')
+            .replace(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi, '');
+    }
+}
+
 module.exports = {
     withTimeoutFallback,
     validateUrl,
     validateUrls,
     extractOptionsFromQuery,
-    extractCleanText
+    extractCleanText,
+    extractCleanHtml
 };
