@@ -47,7 +47,7 @@ services:
     container_name: headlessx-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@headlessx.local}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:valfonsob98@gmail.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     volumes:

@@ -192,9 +192,9 @@ class AmazonScraperService {
                     }
 
                     // Price - Use the offscreen price which has the clean value
-                    const priceWhole = item.querySelector(selectors.priceWhole);
+                    const priceOffscreen = item.querySelector(selectors.priceOffscreen);
                     if (priceOffscreen) {
-                        const priceText = priceWhole.textContent.trim();
+                        const priceText = priceOffscreen.textContent.trim();
                         product.priceText = priceText;
                         // Extract currency symbol
                         const currencyMatch = priceText.match(/^([^\d]+)/);
