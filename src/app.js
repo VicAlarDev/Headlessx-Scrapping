@@ -35,6 +35,7 @@ try {
 const apiRoutes = require('./routes/api');
 const ecommerceRoutes = require('./routes/ecommerce');
 const amazonRoutes = require('./routes/stores/amazon');
+const jobsRoutes = require('./routes/jobs');
 const staticRoutes = require('./routes/static');
 let adminRoutes = null;
 if (config.features?.adminRoutes) {
@@ -45,6 +46,10 @@ if (config.features?.adminRoutes) {
         adminRoutes = null;
     }
 }
+
+// Database and scheduled jobs services
+const databaseService = require('./services/database');
+const { scheduledJobsService } = require('./services/scheduledJobs');
 
 // Import enhanced middleware (v1.3.0)
 const { errorHandler, notFoundHandler } = require('./middleware/error');
@@ -97,6 +102,9 @@ app.use('/api/ecommerce', ecommerceRoutes);
 
 // Mount store-specific routes
 app.use('/api/amazon', amazonRoutes);
+
+// Mount scheduled jobs routes
+app.use('/api/jobs', jobsRoutes);
 
 // Mount admin routes (v1.3.0)
 if (adminRoutes) {
@@ -225,6 +233,24 @@ function startServer() {
     });
 }
 
+// Initialize database and scheduled jobs
+async function initializeServices() {
+    // Initialize database connection
+    try {
+        await databaseService.initialize();
+        console.log('✅ Database connection established');
+
+        // Initialize scheduled jobs if enabled
+        if (process.env.ENABLE_SCHEDULED_JOBS !== 'false') {
+            await scheduledJobsService.initialize();
+            console.log('✅ Scheduled jobs service started');
+        }
+    } catch (error) {
+        console.warn('⚠️ Database not available, running without persistence:', error.message);
+        console.log('💡 Run "docker-compose up -d" to start PostgreSQL and Redis');
+    }
+}
+
 // Initialize server with v1.3.0 banner
 if (require.main === module || (require.main && require.main.filename.includes('server.js'))) {
     console.log('🔄 Initializing HeadlessX v1.3.0...');
@@ -240,14 +266,17 @@ if (require.main === module || (require.main && require.main.filename.includes('
         console.log('🛠️ Development tools enabled');
     }
 
-    setTimeout(() => {
-        try {
-            startServer();
-        } catch (error) {
-            console.error('❌ v1.3.0 Server startup failed:', error);
-            process.exit(1);
-        }
-    }, 100);
+    // Initialize services and start server
+    initializeServices().then(() => {
+        setTimeout(() => {
+            try {
+                startServer();
+            } catch (error) {
+                console.error('❌ v1.3.0 Server startup failed:', error);
+                process.exit(1);
+            }
+        }, 100);
+    });
 }
 
 module.exports = app;

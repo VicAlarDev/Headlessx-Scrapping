@@ -29,6 +29,7 @@ class AmazonScraperService {
         priceOffscreen: 'span.a-price span.a-offscreen',
         priceWhole: 'span.a-price-whole',
         priceFraction: 'span.a-price-fraction',
+        discount: 'span.savingPriceOverride',
         // Original/Typical price (strikethrough)
         originalPrice: 'span.a-price.a-text-price span.a-offscreen',
         typicalPrice: 'span.a-price.a-text-price[data-a-strike="true"] span.a-offscreen',
@@ -191,9 +192,9 @@ class AmazonScraperService {
                     }
 
                     // Price - Use the offscreen price which has the clean value
-                    const priceOffscreen = item.querySelector(selectors.priceOffscreen);
+                    const priceWhole = item.querySelector(selectors.priceWhole);
                     if (priceOffscreen) {
-                        const priceText = priceOffscreen.textContent.trim();
+                        const priceText = priceWhole.textContent.trim();
                         product.priceText = priceText;
                         // Extract currency symbol
                         const currencyMatch = priceText.match(/^([^\d]+)/);
@@ -532,10 +533,14 @@ class AmazonScraperService {
         discountPercent: '.savingsPercentage, .savingPriceOverride',
         // Original/Typical price
         typicalPrice: '.basisPrice .a-price .a-offscreen, span.a-price.a-text-price[data-a-strike="true"] .a-offscreen',
+        // Condition (New/Used)
+        condition: '.accordion-caption .a-text-bold, #newAccordionCaption_feature_div .a-text-bold',
+        conditionType: '[data-csa-c-buying-option-type]',
         // ASIN
         asin: 'th:contains("ASIN") + td, input[name="ASIN"]',
-        // Seller
-        seller: '#sellerProfileTriggerId, .offer-display-feature-text-message',
+        // Seller/Merchant
+        seller: '#sellerProfileTriggerId, #merchantInfoFeature_feature_div .offer-display-feature-text-message, #tabular-buybox-truncate-1 .a-truncate-full',
+        sellerLink: '#sellerProfileTriggerId',
         // Availability
         availability: '#availability span',
         // Rating
@@ -587,7 +592,7 @@ class AmazonScraperService {
                 }
 
                 // Current Price
-                const priceOffscreen = document.querySelector('.priceToPay .a-offscreen');
+                const priceOffscreen = document.querySelector('.priceWhole');
                 if (priceOffscreen) {
                     const priceText = priceOffscreen.textContent.trim();
                     product.priceText = priceText;
@@ -638,6 +643,32 @@ class AmazonScraperService {
                     }
                 }
 
+                // Product Condition (New/Used)
+                const conditionEl = document.querySelector(selectors.condition);
+                if (conditionEl) {
+                    const conditionText = conditionEl.textContent.trim().toLowerCase();
+                    if (conditionText.includes('new') || conditionText.includes('nuevo')) {
+                        product.condition = 'new';
+                    } else if (conditionText.includes('used') || conditionText.includes('usado')) {
+                        product.condition = 'used';
+                    } else if (conditionText.includes('renewed') || conditionText.includes('renovado')) {
+                        product.condition = 'renewed';
+                    } else if (conditionText.includes('refurbished') || conditionText.includes('reacondicionado')) {
+                        product.condition = 'refurbished';
+                    } else {
+                        product.conditionText = conditionText.replace('buy', '').replace('comprar', '').replace(':', '').trim();
+                    }
+                }
+
+                // Also check data attribute for condition type
+                const conditionTypeEl = document.querySelector(selectors.conditionType);
+                if (conditionTypeEl && !product.condition) {
+                    const buyingOptionType = conditionTypeEl.getAttribute('data-csa-c-buying-option-type');
+                    if (buyingOptionType) {
+                        product.condition = buyingOptionType.toLowerCase();
+                    }
+                }
+
                 // ASIN - try multiple methods
                 const asinInput = document.querySelector('input[name="ASIN"]');
                 if (asinInput) {
@@ -653,10 +684,29 @@ class AmazonScraperService {
                     }
                 }
 
-                // Seller
-                const sellerEl = document.querySelector(selectors.seller);
-                if (sellerEl) {
-                    product.seller = sellerEl.textContent.trim();
+                // Seller/Merchant
+                const sellerLinkEl = document.querySelector(selectors.sellerLink);
+                if (sellerLinkEl) {
+                    product.seller = sellerLinkEl.textContent.trim();
+                    // Extract seller ID from href
+                    const sellerHref = sellerLinkEl.getAttribute('href') || '';
+                    const sellerIdMatch = sellerHref.match(/seller=([A-Z0-9]+)/);
+                    if (sellerIdMatch) {
+                        product.sellerId = sellerIdMatch[1];
+                    }
+                    product.sellerUrl = sellerHref;
+                } else {
+                    // Fallback to other seller selectors
+                    const sellerEl = document.querySelector(selectors.seller);
+                    if (sellerEl) {
+                        product.seller = sellerEl.textContent.trim();
+                    }
+                }
+
+                // Check if sold by Amazon
+                if (product.seller) {
+                    const sellerLower = product.seller.toLowerCase();
+                    product.isSoldByAmazon = sellerLower.includes('amazon');
                 }
 
                 // Availability
